@@ -11,7 +11,10 @@
     "test": "yarn run lint",
     "build": "tsc",
     "dev": "tsc --watch",
-    "test:ts": "tsc --noEmit"
+    "test:ts": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "cleanup-tgz": "node cleanup-tgz.js",
+    "build:tgz": "yarn cleanup-tgz && yarn clean && yarn build && yarn pack --filename \"$(node -p \"require('./package.json').name\")-$(node -p \"require('./package.json').version\").tgz\""
   },
   "husky": {
     "hooks": {

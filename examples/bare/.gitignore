@@ -52,3 +52,6 @@ ios/.xcode.env.local
 android/app/.cxx
 android/app/build
 android/build
+
+.yarn
+.bundle

@@ -21,11 +21,7 @@ import {
 import * as animatable from 'react-native-animatable';
 import { Animation, CustomAnimation } from 'react-native-animatable';
 
-import {
-  buildAnimations,
-  initializeAnimations,
-  reversePercentage,
-} from './utils';
+import { BackHandler } from './back-handler.js';
 import styles from './modal.style';
 import {
   AnimationEvent,
@@ -36,7 +32,12 @@ import {
   OrNull,
   PresentationStyle,
 } from './types';
-import { BackHandler } from './back-handler.js';
+import {
+  buildAnimations,
+  initializeAnimations,
+  makeAnimation,
+  reversePercentage,
+} from './utils';
 
 // Override default react-native-animatable animations
 initializeAnimations();
@@ -77,7 +78,6 @@ const defaultProps = {
         event: GestureResponderEvent,
         gestureState: PanResponderGestureState,
       ) => boolean),
-  isVisible: false,
   panResponderThreshold: 4,
   swipeThreshold: 100,
 
@@ -171,24 +171,25 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       };
       this.buildPanResponder();
     }
-    if (props.isVisible) {
-      this.state = {
-        ...this.state,
-        isVisible: true,
-        showContent: true,
-      };
-    }
+
+    makeAnimation('fadeIn', {
+      from: {
+        opacity: 0,
+      },
+      to: {
+        opacity: props.backdropOpacity,
+      },
+    });
+    makeAnimation('fadeOut', {
+      from: {
+        opacity: props.backdropOpacity,
+      },
+      to: {
+        opacity: 0,
+      },
+    });
   }
 
-  static getDerivedStateFromProps(
-    nextProps: Readonly<ModalProps>,
-    state: State,
-  ) {
-    if (!state.isVisible && nextProps.isVisible) {
-      return { isVisible: true, showContent: true };
-    }
-    return null;
-  }
   componentDidMount() {
     // Show deprecation message
     if ((this.props as any).onSwipe) {
@@ -244,23 +245,29 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       this.props.backdropOpacity !== prevProps.backdropOpacity &&
       this.backdropRef
     ) {
-      this.backdropRef.transitionTo(
-        { opacity: this.props.backdropOpacity },
-        this.props.backdropTransitionInTiming,
-      );
-    }
-    // On modal open request, we slide the view up and fade in the backdrop
-    if (this.props.isVisible && !prevProps.isVisible) {
-      this.open();
-    } else if (!this.props.isVisible && prevProps.isVisible) {
-      // On modal close request, we slide the view down and fade out the backdrop
-      this.close();
+      makeAnimation('fadeIn', {
+        from: {
+          opacity: 0,
+        },
+        to: {
+          opacity: this.props.backdropOpacity,
+        },
+      });
+      makeAnimation('fadeOut', {
+        from: {
+          opacity: this.props.backdropOpacity,
+        },
+        to: {
+          opacity: 0,
+        },
+      });
+      this.backdropRef.animate('fadeIn', this.props.backdropTransitionInTiming);
     }
   }
   getDeviceHeight = () => this.props.deviceHeight || this.state.deviceHeight;
   getDeviceWidth = () => this.props.deviceWidth || this.state.deviceWidth;
   onBackButtonPress = () => {
-    if (this.props.onBackButtonPress && this.props.isVisible) {
+    if (this.props.onBackButtonPress && this.state.isVisible) {
       this.props.onBackButtonPress();
       return true;
     }
@@ -546,54 +553,55 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
   };
 
   open = () => {
-    if (this.isTransitioning) {
-      return;
-    }
-    this.isTransitioning = true;
-    if (this.backdropRef) {
-      this.backdropRef.transitionTo(
-        { opacity: this.props.backdropOpacity },
-        this.props.backdropTransitionInTiming,
-      );
-    }
-
-    // This is for resetting the pan position,otherwise the modal gets stuck
-    // at the last released position when you try to open it.
-    // TODO: Could certainly be improved - no idea for the moment.
-    if (this.state.isSwipeable) {
-      this.state.pan!.setValue({ x: 0, y: 0 });
-    }
-
-    if (this.contentRef) {
-      this.props.onModalWillShow && this.props.onModalWillShow();
-      if (this.interactionHandle == null) {
-        this.interactionHandle = InteractionManager.createInteractionHandle();
+    this.setState({ showContent: true, isVisible: true }, () => {
+      if (this.isTransitioning) {
+        return;
       }
-      this.contentRef
-        .animate(this.animationIn, this.props.animationInTiming)
-        .then(() => {
-          this.isTransitioning = false;
-          if (this.interactionHandle) {
-            InteractionManager.clearInteractionHandle(this.interactionHandle);
-            this.interactionHandle = null;
-          }
-          if (!this.props.isVisible) {
-            this.close();
-          } else {
+
+      this.isTransitioning = true;
+      if (this.backdropRef) {
+        this.backdropRef.animate(
+          'fadeIn',
+          this.props.backdropTransitionInTiming,
+        );
+      }
+
+      // This is for resetting the pan position,otherwise the modal gets stuck
+      // at the last released position when you try to open it.
+      // TODO: Could certainly be improved - no idea for the moment.
+      if (this.state.isSwipeable) {
+        this.state.pan!.setValue({ x: 0, y: 0 });
+      }
+
+      if (this.contentRef) {
+        this.props.onModalWillShow && this.props.onModalWillShow();
+        if (this.interactionHandle == null) {
+          this.interactionHandle = InteractionManager.createInteractionHandle();
+        }
+        this.contentRef
+          .animate(this.animationIn, this.props.animationInTiming)
+          .then(() => {
+            this.isTransitioning = false;
+            if (this.interactionHandle) {
+              InteractionManager.clearInteractionHandle(this.interactionHandle);
+              this.interactionHandle = null;
+            }
+
             this.props.onModalShow();
-          }
-        });
-    }
+          });
+      }
+    });
   };
 
-  close = () => {
+  close = (callback?: () => void) => {
     if (this.isTransitioning) {
       return;
     }
+
     this.isTransitioning = true;
     if (this.backdropRef) {
-      this.backdropRef.transitionTo(
-        { opacity: 0 },
+      this.backdropRef.animate(
+        'fadeOut',
         this.props.backdropTransitionOutTiming,
       );
     }
@@ -626,25 +634,23 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
             InteractionManager.clearInteractionHandle(this.interactionHandle);
             this.interactionHandle = null;
           }
-          if (this.props.isVisible) {
-            this.open();
-          } else {
-            this.setState(
-              {
-                showContent: false,
-              },
-              () => {
-                this.setState(
-                  {
-                    isVisible: false,
-                  },
-                  () => {
-                    this.props.onModalHide();
-                  },
-                );
-              },
-            );
-          }
+
+          this.setState(
+            {
+              showContent: false,
+            },
+            () => {
+              this.setState(
+                {
+                  isVisible: false,
+                },
+                () => {
+                  this.props.onModalHide();
+                  callback?.();
+                },
+              );
+            },
+          );
         });
     }
   };
@@ -722,7 +728,6 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       backdropTransitionOutTiming,
       customBackdrop,
       children,
-      isVisible,
       onModalShow,
       onBackButtonPress,
       useNativeDriver,
