@@ -589,6 +589,8 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
 
             this.props.onModalShow();
           });
+      } else {
+        this.isTransitioning = false;
       }
     });
   };
@@ -652,6 +654,9 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
             },
           );
         });
+    } else {
+      this.isTransitioning = false;
+      callback?.();
     }
   };
   makeBackdrop = () => {
